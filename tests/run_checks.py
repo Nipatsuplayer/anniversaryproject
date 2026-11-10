@@ -14,6 +14,7 @@ Run from the repository root:
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from datetime import timedelta
 from pathlib import Path
@@ -32,6 +33,15 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "admin_panel.settings")
 import django  # noqa: E402
 
 django.setup()
+
+# ballsdex.packages.countryballs reads bot settings at import time (Modal titles,
+# collectible names): provide an unsaved default instance so these checks can run
+# against any database, including an empty one.
+sys.path.insert(0, str(PACKAGE_ROOT.parents[1] / "admin_panel"))
+
+from settings.models import Settings, settings  # noqa: E402
+
+settings.instance = Settings()
 
 from anniversary import hooks  # noqa: E402
 from anniversary.formatting import progress_bar  # noqa: E402

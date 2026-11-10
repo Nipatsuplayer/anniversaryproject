@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib.util
 import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Callable
@@ -27,6 +28,18 @@ if TYPE_CHECKING:
 log = logging.getLogger(config.LOGGER_NAME)
 
 
+def _ballsdex_dispatches_events() -> bool:
+    """
+    Whether the running BallsDex version dispatches ballsdex events.
+
+    Task progression relies on the ``ballsdex_ball_caught``, ``ballsdex_trade_completed``
+    and ``ballsdex_ball_given`` events, added after the 3.2.0 release. On older bots
+    those events are never dispatched, so the listeners below stay silent and no
+    catch, trade or donation is ever counted.
+    """
+    return importlib.util.find_spec("ballsdex.core.events") is not None
+
+
 def _when(moment: datetime) -> str:
     stamp = f"{moment:%Y-%m-%d %H:%M} UTC"
     if not config.SCHEDULE_TIMEZONE:
@@ -47,6 +60,7 @@ class Anniversary(commands.Cog):
         self._uninstall: Callable[[], None] | None = None
         self._task: asyncio.Task | None = None
         self._db_error_logged = False
+        self._dispatch_support_logged = False
         self._mode: str | None = None
 
     async def cog_load(self) -> None:
@@ -108,6 +122,16 @@ class Anniversary(commands.Cog):
             else:
                 self._set_mode("no event")
             return float(config.SETTINGS_POLL_INTERVAL)
+
+        if not self._dispatch_support_logged:
+            self._dispatch_support_logged = True
+            if not _ballsdex_dispatches_events():
+                log.error(
+                    "This BallsDex installation does not dispatch ballsdex events "
+                    "(ballsdex.core.events is missing, event dispatches were added after the 3.2.0 release): "
+                    "no catch, trade or donation will ever be counted, tasks cannot progress. "
+                    "Update the bot to a version with event dispatch support and restart it."
+                )
 
         await self.state.load(event)
         if event.is_active(now):
