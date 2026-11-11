@@ -26,6 +26,22 @@ class ProgressView(LayoutView):
         self.page_size = page_size
         self.page = 0
         self._refresh_task: asyncio.Task | None = None
+
+        self.container = Container()
+        self.add_item(self.container)
+
+        self.row = ActionRow()
+        self.previous_button = Button(label="Previous", style=discord.ButtonStyle.secondary)
+        self.previous_button.callback = self._previous  # type: ignore[method-assign]
+        self.refresh_button = Button(label="Refresh", style=discord.ButtonStyle.primary)
+        self.refresh_button.callback = self._refresh_now  # type: ignore[method-assign]
+        self.next_button = Button(label="Next", style=discord.ButtonStyle.secondary)
+        self.next_button.callback = self._next  # type: ignore[method-assign]
+        self.row.add_item(self.previous_button)
+        self.row.add_item(self.refresh_button)
+        self.row.add_item(self.next_button)
+        self.add_item(self.row)
+
         self._build()
         self._refresh_task = asyncio.create_task(self._auto_refresh(), name="anniversary-progress-refresh")
 
@@ -81,35 +97,24 @@ class ProgressView(LayoutView):
 
     def _build(self) -> None:
         self.page = max(0, min(self.page, self.page_count - 1))
-        self.clear_items()
         event = self.event
-        colour = parse_colour(event.accent_color if event else "#5865F2")
-
-        container = Container(accent_colour=colour)
-        container.add_item(TextDisplay(self._header()))
+        self.container.accent_colour = parse_colour(event.accent_color if event else "#5865F2")
+        # Only rebuild the non-interactive contents. Clearing the view itself would detach the
+        # buttons while discord.py's ViewStore still references them, so a stale interaction can
+        # crash with "NoneType has no attribute _dispatch_item".
+        self.container.clear_items()
+        self.container.add_item(TextDisplay(self._header()))
         if not self.state.tasks:
-            container.add_item(TextDisplay("No tasks have been added to this event yet."))
+            self.container.add_item(TextDisplay("No tasks have been added to this event yet."))
         else:
             for task in self._visible_tasks():
-                container.add_item(TextDisplay(self._task_text(task)))
+                self.container.add_item(TextDisplay(self._task_text(task)))
         refresh = event.progress_refresh_seconds if event else config.MIN_PROGRESS_REFRESH
         refresh = max(config.MIN_PROGRESS_REFRESH, refresh)
-        container.add_item(TextDisplay(f"-# Refreshes every {refresh}s \N{MIDDLE DOT} preview only"))
-        self.add_item(container)
+        self.container.add_item(TextDisplay(f"-# Refreshes every {refresh}s \N{MIDDLE DOT} preview only"))
 
-        row = ActionRow()
-        previous = Button(label="Previous", style=discord.ButtonStyle.secondary, disabled=self.page <= 0)
-        previous.callback = self._previous  # type: ignore[method-assign]
-        row.add_item(previous)
-
-        refresh_button = Button(label="Refresh", style=discord.ButtonStyle.primary)
-        refresh_button.callback = self._refresh_now  # type: ignore[method-assign]
-        row.add_item(refresh_button)
-
-        following = Button(label="Next", style=discord.ButtonStyle.secondary, disabled=self.page >= self.page_count - 1)
-        following.callback = self._next  # type: ignore[method-assign]
-        row.add_item(following)
-        self.add_item(row)
+        self.previous_button.disabled = self.page <= 0
+        self.next_button.disabled = self.page >= self.page_count - 1
 
     async def _previous(self, interaction: discord.Interaction) -> None:
         if self.page <= 0:
