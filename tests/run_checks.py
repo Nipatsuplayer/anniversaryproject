@@ -222,12 +222,49 @@ def check_patch_restore_order() -> None:
         setattr(BallSpawnView, "spawn", saved["spawn"])
 
 
+def check_progress_view_timeout() -> None:
+    import asyncio
+    import contextlib
+    from unittest.mock import AsyncMock
+
+    import discord
+    from anniversary.package.views import ProgressView
+
+    class FakeResponse:
+        status = 401
+        reason = "Unauthorized"
+
+    async def run() -> None:
+        state = EventState(cast(Any, None))
+        view = ProgressView(state)
+        refresh_task = view._refresh_task
+
+        edit = AsyncMock(
+            side_effect=discord.HTTPException(
+                cast(Any, FakeResponse()), {"code": 50027, "message": "Invalid Webhook Token"}
+            )
+        )
+        view.original_message = cast(Any, SimpleNamespace(edit=edit))
+
+        await view.on_timeout()
+        assert view._refresh_task is None
+        assert edit.await_count == 1
+        assert all(button.view is view for button in (view.previous_button, view.refresh_button, view.next_button))
+
+        if refresh_task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await refresh_task
+
+    asyncio.run(run())
+
+
 def main() -> None:
     check_matching()
     check_formatting()
     check_models()
     check_spawn_wrappers()
     check_patch_restore_order()
+    check_progress_view_timeout()
     print("anniversary checks passed")
 
 

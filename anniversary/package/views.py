@@ -164,4 +164,7 @@ class ProgressView(LayoutView):
         if self._refresh_task is not None:
             self._refresh_task.cancel()
             self._refresh_task = None
-        await super().on_timeout()
+        try:
+            await super().on_timeout()
+        except discord.HTTPException:
+            log.debug("Could not disable the anniversary progress view on timeout.", exc_info=True)
